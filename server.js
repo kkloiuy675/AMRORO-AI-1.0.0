@@ -44,7 +44,10 @@ async function callGroq(prompt) {
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         messages: [
-          { role: 'system', content: 'You are an assistant for Roblox Studio Luau development.' },
+          { 
+            role: 'system', 
+            content: 'You are an expert Roblox Studio Luau developer assistant. Generate production-ready, clean Luau scripts and Studio instructions.' 
+          },
           { role: 'user', content: prompt }
         ],
         temperature: 0.5
@@ -60,7 +63,7 @@ async function callGroq(prompt) {
 }
 
 // Gemini API Call
-async function callGemini(geminiPrompt, modelName = 'gemini-3.8-flash') {
+async function callGemini(geminiPrompt, modelName = 'gemini-2.0-flash') {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY environment variable is missing.');
@@ -91,24 +94,35 @@ async function callGemini(geminiPrompt, modelName = 'gemini-3.8-flash') {
   return textResult;
 }
 
-// Dual-AI Processing Engine
+// Fail-Safe Dual-AI Processing Engine
 async function processAIRequest(prompt, userAge) {
+  // 1. Fetch draft script from Groq
   const groqDraft = await callGroq(prompt);
 
   const geminiPrompt = `You are the Master AI Scripting Assistant for Roblox Studio (Luau).
 Target Audience Age Rating: ${userAge}+
 
 User Request: "${prompt}"
-Initial Code Structure: "${groqDraft}"
+Base Script: "${groqDraft}"
 
-Generate working, safe, optimized Luau scripts and Studio instructions matching the target age rating.`;
+Generate working, safe, optimized Luau scripts and Studio step-by-step instructions.`;
 
+  // 2. Try Gemini 2.0 Flash
   try {
-    const result = await callGemini(geminiPrompt, 'gemini-3.8-flash');
+    const result = await callGemini(geminiPrompt, 'gemini-2.0-flash');
     return { success: true, result };
   } catch (err) {
-    console.error('[GEMINI ERROR]:', err.message);
-    return { success: false, result: `[Gemini Error]: ${err.message}` };
+    console.warn('[GEMINI ERROR - SWAPPING TO GROQ FALLBACK]:', err.message);
+
+    // 3. Fallback: If Gemini fails, return Groq's output so plugin NEVER breaks
+    if (groqDraft && groqDraft.trim().length > 0) {
+      return { success: true, result: groqDraft };
+    }
+
+    return { 
+      success: false, 
+      result: `[AI Error]: Could not generate response. Please check your API keys.` 
+    };
   }
 }
 
